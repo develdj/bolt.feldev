@@ -1,28 +1,40 @@
+# Use an ARM64-compatible base image for NVIDIA Jetson Orin AGX
 ARG BASE=node:20-alpine
 FROM ${BASE} AS base
 
+# Set working directory
 WORKDIR /app
 
-# Install dependencies (this step is cached as long as the dependencies don't change)
+# Install dependencies (cached)
 COPY package.json pnpm-lock.yaml ./
 
-# RUN corepack enable pnpm && pnpm install
-RUN apk add --no-cache git
-RUN npm install -g corepack && corepack enable pnpm && pnpm install
-RUN git config --global --add safe.directory /app
-RUN pnpm install --force && pnpm add @cloudflare/workerd-linux-arm64
+# Install necessary dependencies
+RUN apk add --no-cache git && \
+    npm install -g corepack && corepack enable pnpm && \
+    pnpm install --force && \
+    pnpm add @cloudflare/workerd-linux-arm64
+
+# Fix permission issues for workerd binary
 RUN chmod +x $(find /app/node_modules/.pnpm -name workerd)
+
+# Install Wrangler globally
 RUN npm install -g wrangler
 
-RUN pnpm install --force
-#RUN pnpm add @cloudflare/workerd-linux-x64
-# Copy the rest of your app's source code
+# Copy application source code
 COPY . .
-RUN chmod +x /app/node_modules/.pnpm/@cloudflare+workerd-linux-arm64@*/node_modules/@cloudflare/workerd-linux-arm64/bin/workerd
 
-# Expose the port the app runs on
+# Ensure the bindings.sh script has the correct format and permissions
+RUN tr -d '\r' < bindings.sh > bindings.tmp && \
+    mv bindings.tmp bindings.sh && \
+    chmod +x bindings.sh
+
+# Build the application
+RUN pnpm run build
+
+# Expose the necessary port
 EXPOSE 5173
-# Configurar variáveis de ambiente
+
+# Set environment variables
 ENV NODE_ENV=production \
     RUNNING_IN_DOCKER=true
 
@@ -30,11 +42,5 @@ ENV NODE_ENV=production \
 RUN mkdir -p /root/.config/.wrangler && \
     echo '{"enabled":false}' > /root/.config/.wrangler/metrics.json
 
-#RUN pnpm run build
-
-# Garantir que o bindings.sh tem permissões de execução e formato correto
-#RUN tr -d '\r' < bindings.sh > bindings.tmp && \
-#    mv bindings.tmp bindings.sh && \
- #   chmod +x bindings.sh
-CMD pnpm run dev
-CMD [ "pnpm", "run", "dockerstart"]
+# Start the application
+CMD ["pnpm", "run", "dockerstart"]
