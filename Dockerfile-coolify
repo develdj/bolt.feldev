@@ -3,9 +3,8 @@ FROM ${BASE} AS base
 
 WORKDIR /app
 
-# Instalar pnpm e wrangler
-# RUN corepack enable pnpm && \
-#    npm install -g wrangler
+# Install dependencies (this step is cached as long as the dependencies don't change)
+COPY package.json pnpm-lock.yaml ./
 
 # RUN corepack enable pnpm && pnpm install
 RUN apk add --no-cache git
@@ -13,31 +12,33 @@ RUN npm install -g corepack && corepack enable pnpm && pnpm install
 RUN git config --global --add safe.directory /app
 RUN pnpm install --force && pnpm add @cloudflare/workerd-linux-arm64
 RUN chmod +x $(find /app/node_modules/.pnpm -name workerd)
-RUN pnpm install -g wrangler
 
-# Copiar arquivos de dependências
-COPY package.json pnpm-lock.yaml ./
-
-# Instalar dependências
-RUN pnpm install
-
-# Copiar código  fonte e scripts
+RUN pnpm install --force
+#RUN pnpm add @cloudflare/workerd-linux-x64
+# Copy the rest of your app's source code
 COPY . .
+RUN chmod +x /app/node_modules/.pnpm/@cloudflare+workerd-linux-arm64@*/node_modules/@cloudflare/workerd-linux-arm64/bin/workerd
+
+# Production image
+FROM base AS bolt-ai-production
+
+
+# Pre-configure wrangler to disable metrics
+RUN mkdir -p /root/.config/.wrangler && \
+    echo '{"enabled":false}' > /root/.config/.wrangler/metrics.json
+
 
 # Garantir que o bindings.sh tem permissões de execução e formato correto
 RUN tr -d '\r' < bindings.sh > bindings.tmp && \
     mv bindings.tmp bindings.sh && \
     chmod +x bindings.sh
 
-# Build da aplicação
 RUN pnpm run build
 
-# Expor porta
+# Expose the port the app runs on
 EXPOSE 5173
-
 # Configurar variáveis de ambiente
 ENV NODE_ENV=production \
     RUNNING_IN_DOCKER=true
 
-# Comando para iniciar usando o script dockerstart
-CMD ["pnpm", "run", "dockerstart"]
+CMD [ "pnpm", "run", "dockerstart"]
