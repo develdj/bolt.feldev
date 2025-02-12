@@ -1,46 +1,42 @@
-# Use an ARM64-compatible base image for NVIDIA Jetson Orin AGX
-ARG BASE=node:20-alpine
-FROM ${BASE} AS base
+FROM node:20.18.0
 
-# Set working directory
 WORKDIR /app
 
-# Install dependencies (cached)
+# Install necessary dependencies
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Enable pnpm and install wrangler
+RUN corepack enable pnpm && npm install -g wrangler
+
+# Copy package files first for caching
 COPY package.json pnpm-lock.yaml ./
 
-# Install necessary dependencies
-RUN apk add --no-cache git && \
-    npm install -g corepack && corepack enable pnpm && \
-    pnpm install --force && \
-    pnpm add @cloudflare/workerd-linux-arm64
-
-# Fix permission issues for workerd binary
-RUN chmod +x $(find /app/node_modules/.pnpm -name workerd)
-
-# Install Wrangler globally
-RUN npm install -g wrangler
+# Force install dependencies to ensure architecture compatibility
+RUN pnpm install --ignore-scripts && pnpm rebuild
 
 # Copy application source code
 COPY . .
 
-# Ensure the bindings.sh script has the correct format and permissions
+# Ensure bindings.sh has the correct format and permissions
 RUN tr -d '\r' < bindings.sh > bindings.tmp && \
     mv bindings.tmp bindings.sh && \
     chmod +x bindings.sh
 
-# Build the application
-RUN pnpm run build
+# Check and install workerd manually if missing
+RUN if [ ! -f "/app/node_modules/.pnpm/@cloudflare+workerd-linux-arm64/bin/workerd" ]; then \
+    echo "Installing missing workerd binary..."; \
+    pnpm add @cloudflare/workerd-linux-arm64; \
+  fi
 
-# Expose the necessary port
+# Build application with debug logs enabled
+RUN pnpm run build || (echo "Build failed, printing logs..." && cat /app/build.log && exit 1)
+
+# Expose necessary port
 EXPOSE 5173
 
 # Set environment variables
 ENV NODE_ENV=production \
     RUNNING_IN_DOCKER=true
-
-# Pre-configure wrangler to disable metrics
-RUN mkdir -p /root/.config/.wrangler && \
-    echo '{"enabled":false}' > /root/.config/.wrangler/metrics.json
 
 # Start the application
 CMD ["pnpm", "run", "dockerstart"]
