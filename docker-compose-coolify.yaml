@@ -80,3 +80,21 @@ services:
     command: pnpm run dockerstart
     profiles:
       - prebuilt
+  ollama:
+    ports:
+      - '11434:11434'
+    image: 'ollama/ollama:latest'
+    volumes:
+      - './ollama/models:/ollama/models'
+    environment:
+      - OLLAMA_MODELS=/ollama/models
+      - 'DEFAULT_MODEL=llama3.2:1b'
+      - 'OLLAMA_HOST=http://ollama:11434'
+    healthcheck:
+      test:
+        - CMD
+        - ollama
+        - list
+      interval: 5s
+      timeout: 30s
+      retries: 10
