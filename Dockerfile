@@ -10,7 +10,7 @@ RUN corepack enable pnpm && pnpm install
 
 # Copy the rest of your app's source code
 COPY . .
-COPY .github .git
+
 # Expose the port the app runs on
 EXPOSE 5173
 
