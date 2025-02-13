@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile-coolify
+    platform: linux/arm64  # Ensure compatibility with NVIDIA Jetson Orin AGX
     ports:
       - "3000:5173"
     environment:
@@ -22,11 +23,17 @@ services:
       - VITE_LOG_LEVEL=${VITE_LOG_LEVEL:-debug}
       - DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX:-32768}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5173"]
+      interval: 30s
+      retries: 5
+      start_period: 10s
 
   app-dev:
     image: bolt-ai:development
     build:
       target: bolt-ai-development
+    platform: linux/arm64
     env_file: ".env.local"
     environment:
       - NODE_ENV=development
@@ -57,44 +64,26 @@ services:
         source: .
         target: /app
         consistency: cached
-      - /app/node_modules
+      - /app/node_modules:/app/node_modules
     ports:
       - "5173:5173"
-    command: pnpm run dev --host 0.0.0.0
+    command: ["pnpm", "run", "dev", "--host", "0.0.0.0"]
     profiles: ["development", "default"]
 
   app-prebuild:
-    image: ghcr.io/stackblitz-labs/bolt.diy:latest 
+    image: ghcr.io/stackblitz-labs/bolt.diy:latest
+    platform: linux/arm64
     ports:
       - "5173:5173"
     environment:
       - NODE_ENV=production
       - COMPOSE_PROFILES=production
-      # No strictly needed but serving as hints for Coolify
       - PORT=5173
-      - OLLAMA_API_BASE_URL=http://localhost:11434
+      - OLLAMA_API_BASE_URL=http://127.0.0.1:11434
       - DEFAULT_NUM_CTX=${DEFAULT_NUM_CTX:-32768}
       - RUNNING_IN_DOCKER=true
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: pnpm run dockerstart
+    command: ["pnpm", "run", "dockerstart"]
     profiles:
       - prebuilt
-  ollama:
-    ports:
-      - '11434:11434'
-    image: 'ollama/ollama:latest'
-    volumes:
-      - './ollama/models:/ollama/models'
-    environment:
-      - OLLAMA_MODELS=/ollama/models
-      - 'DEFAULT_MODEL=llama3.2:1b'
-      - 'OLLAMA_HOST=http://ollama:11434'
-    healthcheck:
-      test:
-        - CMD
-        - ollama
-        - list
-      interval: 5s
-      timeout: 30s
-      retries: 10
