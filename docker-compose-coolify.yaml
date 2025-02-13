@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile-coolify
     platform: linux/arm64  # Ensure compatibility with NVIDIA Jetson Orin AGX
     ports:
-      - "3000:5173"
+      - "3003:5173"
     environment:
       - NODE_ENV=production
       - PORT=5173
